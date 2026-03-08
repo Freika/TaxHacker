@@ -321,3 +321,95 @@ export const getDetailedTimeSeriesStats = cache(
       .sort((a, b) => a.date.getTime() - b.date.getTime())
   }
 )
+
+export type CategoryStatsData = {
+  categories: CategoryBreakdown[]
+  totalIncome: number
+  totalExpenses: number
+}
+
+export const getCategoryStats = cache(
+  async (
+    userId: string,
+    filters: TransactionFilters = {},
+    defaultCurrency: string = "EUR"
+  ): Promise<CategoryStatsData> => {
+    const where: Prisma.TransactionWhereInput = { userId }
+
+    if (filters.dateFrom || filters.dateTo) {
+      where.issuedAt = {
+        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
+        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
+      }
+    }
+
+    if (filters.categoryCode) {
+      where.categoryCode = filters.categoryCode
+    }
+
+    if (filters.projectCode) {
+      where.projectCode = filters.projectCode
+    }
+
+    if (filters.type) {
+      where.type = filters.type
+    }
+
+    const [transactions, categories] = await Promise.all([
+      prisma.transaction.findMany({ where }),
+      prisma.category.findMany({
+        where: { userId },
+        orderBy: { name: "asc" },
+      }),
+    ])
+
+    const categoryLookup = new Map(categories.map((cat) => [cat.code, cat]))
+    const categoryMap = new Map<string, CategoryBreakdown>()
+    let totalIncome = 0
+    let totalExpenses = 0
+
+    for (const transaction of transactions) {
+      const amount =
+        transaction.convertedCurrencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
+          ? transaction.convertedTotal || 0
+          : transaction.currencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
+            ? transaction.total || 0
+            : 0
+
+      const categoryCode = transaction.categoryCode || "other"
+      const category = categoryLookup.get(categoryCode) || {
+        code: "other",
+        name: "Other",
+        color: "#6b7280",
+      }
+
+      if (!categoryMap.has(categoryCode)) {
+        categoryMap.set(categoryCode, {
+          code: category.code,
+          name: category.name,
+          color: category.color || "#6b7280",
+          income: 0,
+          expenses: 0,
+          transactionCount: 0,
+        })
+      }
+
+      const categoryData = categoryMap.get(categoryCode)!
+      categoryData.transactionCount++
+
+      if (transaction.type === "income") {
+        categoryData.income += amount
+        totalIncome += amount
+      } else if (transaction.type === "expense") {
+        categoryData.expenses += amount
+        totalExpenses += amount
+      }
+    }
+
+    return {
+      categories: Array.from(categoryMap.values()).filter((cat) => cat.income > 0 || cat.expenses > 0),
+      totalIncome,
+      totalExpenses,
+    }
+  }
+)
