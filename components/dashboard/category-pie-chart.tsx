@@ -95,7 +95,7 @@ export function CategoryPieChart({ categories, total, type, defaultCurrency }: C
               key={slice.category.code}
               d={describeArc(cx, cy, r, slice.startAngle, slice.endAngle)}
               fill={slice.category.color}
-              stroke="white"
+              className="stroke-background"
               strokeWidth={2}
               opacity={hoveredIndex !== null && !isHovered ? 0.5 : 1}
               style={{
@@ -110,10 +110,10 @@ export function CategoryPieChart({ categories, total, type, defaultCurrency }: C
           )
         })}
         {/* Center label */}
-        <text x={cx} y={cy - 8} textAnchor="middle" className="fill-gray-700 text-[10px] font-semibold">
+        <text x={cx} y={cy - 8} textAnchor="middle" className="fill-foreground text-[11px] font-semibold">
           Total
         </text>
-        <text x={cx} y={cy + 8} textAnchor="middle" className={`text-[9px] font-bold ${isIncome ? "fill-green-600" : "fill-red-600"}`}>
+        <text x={cx} y={cy + 10} textAnchor="middle" className={`text-[11px] font-bold ${isIncome ? "fill-green-600" : "fill-red-600"}`}>
           {formatCurrency(total, defaultCurrency)}
         </text>
       </svg>
@@ -124,20 +124,20 @@ export function CategoryPieChart({ categories, total, type, defaultCurrency }: C
           <div
             key={slice.category.code}
             className={`flex items-center justify-between gap-2 px-2 py-1 rounded transition-colors duration-150 ${
-              hoveredIndex === i ? "bg-gray-100" : ""
+              hoveredIndex === i ? "bg-muted" : ""
             }`}
             onMouseEnter={() => setHoveredIndex(i)}
             onMouseLeave={() => setHoveredIndex(null)}
           >
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: slice.category.color }} />
-              <span className="text-xs text-gray-700 truncate">{slice.category.name}</span>
+              <span className="text-xs text-foreground truncate">{slice.category.name}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <span className={`text-xs font-medium ${colorClass}`}>
                 {formatCurrency(slice.amount, defaultCurrency)}
               </span>
-              <span className="text-xs text-gray-400 w-12 text-right">
+              <span className="text-xs text-muted-foreground w-12 text-right">
                 {slice.percentage.toFixed(1)}%
               </span>
             </div>

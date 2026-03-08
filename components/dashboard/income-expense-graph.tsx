@@ -122,13 +122,13 @@ export function IncomeExpenseGraph({ data, defaultCurrency }: IncomeExpenseGraph
         {avgIncome > 0 && (
           <div className="flex items-center gap-1.5">
             <div className="w-5 border-t-2 border-dashed border-green-500/70" />
-            <span className="text-green-600 font-medium">Avg Income: {formatCurrency(avgIncome, defaultCurrency)}</span>
+            <span className="text-green-600 font-medium">Avg Income/period: {formatCurrency(avgIncome, defaultCurrency)}</span>
           </div>
         )}
         {avgExpense > 0 && (
           <div className="flex items-center gap-1.5">
             <div className="w-5 border-t-2 border-dashed border-red-500/70" />
-            <span className="text-red-600 font-medium">Avg Expense: {formatCurrency(avgExpense, defaultCurrency)}</span>
+            <span className="text-red-600 font-medium">Avg Expense/period: {formatCurrency(avgExpense, defaultCurrency)}</span>
           </div>
         )}
       </div>

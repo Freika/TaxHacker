@@ -1,8 +1,32 @@
 import { prisma } from "@/lib/db"
 import { calcTotalPerCurrency } from "@/lib/stats"
-import { Prisma } from "@/prisma/client"
+import { Prisma, Transaction } from "@/prisma/client"
 import { cache } from "react"
 import { TransactionFilters } from "./transactions"
+
+function buildFilteredWhere(userId: string, filters: TransactionFilters): Prisma.TransactionWhereInput {
+  const where: Prisma.TransactionWhereInput = { userId }
+  if (filters.dateFrom || filters.dateTo) {
+    where.issuedAt = {
+      gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
+      lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
+    }
+  }
+  if (filters.categoryCode) where.categoryCode = filters.categoryCode
+  if (filters.projectCode) where.projectCode = filters.projectCode
+  if (filters.type) where.type = filters.type
+  return where
+}
+
+function getAmountInCurrency(transaction: Transaction, defaultCurrency: string): number {
+  if (transaction.convertedCurrencyCode?.toUpperCase() === defaultCurrency.toUpperCase()) {
+    return transaction.convertedTotal || 0
+  }
+  if (transaction.currencyCode?.toUpperCase() === defaultCurrency.toUpperCase()) {
+    return transaction.total || 0
+  }
+  return 0
+}
 
 export type DashboardStats = {
   totalIncomePerCurrency: Record<string, number>
@@ -111,29 +135,8 @@ export const getTimeSeriesStats = cache(
     filters: TransactionFilters = {},
     defaultCurrency: string = "EUR"
   ): Promise<TimeSeriesData[]> => {
-    const where: Prisma.TransactionWhereInput = { userId }
-
-    if (filters.dateFrom || filters.dateTo) {
-      where.issuedAt = {
-        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
-      }
-    }
-
-    if (filters.categoryCode) {
-      where.categoryCode = filters.categoryCode
-    }
-
-    if (filters.projectCode) {
-      where.projectCode = filters.projectCode
-    }
-
-    if (filters.type) {
-      where.type = filters.type
-    }
-
     const transactions = await prisma.transaction.findMany({
-      where,
+      where: buildFilteredWhere(userId, filters),
       orderBy: { issuedAt: "asc" },
     })
 
@@ -161,13 +164,7 @@ export const getTimeSeriesStats = cache(
           acc[period] = { period, income: 0, expenses: 0, date }
         }
 
-        // Get amount in default currency
-        const amount =
-          transaction.convertedCurrencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-            ? transaction.convertedTotal || 0
-            : transaction.currencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-              ? transaction.total || 0
-              : 0 // Skip transactions not in default currency for simplicity
+        const amount = getAmountInCurrency(transaction, defaultCurrency)
 
         if (transaction.type === "income") {
           acc[period].income += amount
@@ -190,33 +187,12 @@ export const getDetailedTimeSeriesStats = cache(
     filters: TransactionFilters = {},
     defaultCurrency: string = "EUR"
   ): Promise<DetailedTimeSeriesData[]> => {
-    const where: Prisma.TransactionWhereInput = { userId }
-
-    if (filters.dateFrom || filters.dateTo) {
-      where.issuedAt = {
-        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
-      }
-    }
-
-    if (filters.categoryCode) {
-      where.categoryCode = filters.categoryCode
-    }
-
-    if (filters.projectCode) {
-      where.projectCode = filters.projectCode
-    }
-
-    if (filters.type) {
-      where.type = filters.type
-    }
+    const where = buildFilteredWhere(userId, filters)
 
     const [transactions, categories] = await Promise.all([
       prisma.transaction.findMany({
         where,
-        include: {
-          category: true,
-        },
+        include: { category: true },
         orderBy: { issuedAt: "asc" },
       }),
       prisma.category.findMany({
@@ -235,7 +211,6 @@ export const getDetailedTimeSeriesStats = cache(
     const daysDiff = Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24))
     const groupByDay = daysDiff <= 50
 
-    // Create category lookup
     const categoryLookup = new Map(categories.map((cat) => [cat.code, cat]))
 
     // Group transactions by time period
@@ -245,8 +220,8 @@ export const getDetailedTimeSeriesStats = cache(
 
         const date = new Date(transaction.issuedAt)
         const period = groupByDay
-          ? date.toISOString().split("T")[0] // YYYY-MM-DD
-          : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` // YYYY-MM
+          ? date.toISOString().split("T")[0]
+          : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
 
         if (!acc[period]) {
           acc[period] = {
@@ -259,13 +234,7 @@ export const getDetailedTimeSeriesStats = cache(
           }
         }
 
-        // Get amount in default currency
-        const amount =
-          transaction.convertedCurrencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-            ? transaction.convertedTotal || 0
-            : transaction.currencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-              ? transaction.total || 0
-              : 0 // Skip transactions not in default currency for simplicity
+        const amount = getAmountInCurrency(transaction, defaultCurrency)
 
         const categoryCode = transaction.categoryCode || "other"
         const category = categoryLookup.get(categoryCode) || {
@@ -274,7 +243,6 @@ export const getDetailedTimeSeriesStats = cache(
           color: "#6b7280",
         }
 
-        // Initialize category if not exists
         if (!acc[period].categories.has(categoryCode)) {
           acc[period].categories.set(categoryCode, {
             code: category.code,
@@ -328,88 +296,30 @@ export type CategoryStatsData = {
   totalExpenses: number
 }
 
-export const getCategoryStats = cache(
-  async (
-    userId: string,
-    filters: TransactionFilters = {},
-    defaultCurrency: string = "EUR"
-  ): Promise<CategoryStatsData> => {
-    const where: Prisma.TransactionWhereInput = { userId }
+export function deriveCategoryStats(timeSeriesData: DetailedTimeSeriesData[]): CategoryStatsData {
+  const categoryMap = new Map<string, CategoryBreakdown>()
+  let totalIncome = 0
+  let totalExpenses = 0
 
-    if (filters.dateFrom || filters.dateTo) {
-      where.issuedAt = {
-        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
+  for (const period of timeSeriesData) {
+    totalIncome += period.income
+    totalExpenses += period.expenses
+
+    for (const cat of period.categories) {
+      const existing = categoryMap.get(cat.code)
+      if (existing) {
+        existing.income += cat.income
+        existing.expenses += cat.expenses
+        existing.transactionCount += cat.transactionCount
+      } else {
+        categoryMap.set(cat.code, { ...cat })
       }
-    }
-
-    if (filters.categoryCode) {
-      where.categoryCode = filters.categoryCode
-    }
-
-    if (filters.projectCode) {
-      where.projectCode = filters.projectCode
-    }
-
-    if (filters.type) {
-      where.type = filters.type
-    }
-
-    const [transactions, categories] = await Promise.all([
-      prisma.transaction.findMany({ where }),
-      prisma.category.findMany({
-        where: { userId },
-        orderBy: { name: "asc" },
-      }),
-    ])
-
-    const categoryLookup = new Map(categories.map((cat) => [cat.code, cat]))
-    const categoryMap = new Map<string, CategoryBreakdown>()
-    let totalIncome = 0
-    let totalExpenses = 0
-
-    for (const transaction of transactions) {
-      const amount =
-        transaction.convertedCurrencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-          ? transaction.convertedTotal || 0
-          : transaction.currencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-            ? transaction.total || 0
-            : 0
-
-      const categoryCode = transaction.categoryCode || "other"
-      const category = categoryLookup.get(categoryCode) || {
-        code: "other",
-        name: "Other",
-        color: "#6b7280",
-      }
-
-      if (!categoryMap.has(categoryCode)) {
-        categoryMap.set(categoryCode, {
-          code: category.code,
-          name: category.name,
-          color: category.color || "#6b7280",
-          income: 0,
-          expenses: 0,
-          transactionCount: 0,
-        })
-      }
-
-      const categoryData = categoryMap.get(categoryCode)!
-      categoryData.transactionCount++
-
-      if (transaction.type === "income") {
-        categoryData.income += amount
-        totalIncome += amount
-      } else if (transaction.type === "expense") {
-        categoryData.expenses += amount
-        totalExpenses += amount
-      }
-    }
-
-    return {
-      categories: Array.from(categoryMap.values()).filter((cat) => cat.income > 0 || cat.expenses > 0),
-      totalIncome,
-      totalExpenses,
     }
   }
-)
+
+  return {
+    categories: Array.from(categoryMap.values()),
+    totalIncome,
+    totalExpenses,
+  }
+}

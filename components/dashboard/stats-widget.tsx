@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { formatCurrency } from "@/lib/utils"
 import { getProjects } from "@/models/projects"
 import { getSettings } from "@/models/settings"
-import { getCategoryStats, getDashboardStats, getDetailedTimeSeriesStats, getProjectStats } from "@/models/stats"
+import { deriveCategoryStats, getDashboardStats, getDetailedTimeSeriesStats, getProjectStats } from "@/models/stats"
 import { TransactionFilters } from "@/models/transactions"
 import { ArrowDown, ArrowUp, BicepsFlexed } from "lucide-react"
 import Link from "next/link"
@@ -18,14 +18,15 @@ export async function StatsWidget({ filters }: { filters: TransactionFilters }) 
   const settings = await getSettings(user.id)
   const defaultCurrency = settings.default_currency || "EUR"
 
-  const [stats, statsTimeSeries, categoryStats, statsPerProject] = await Promise.all([
+  const [stats, statsTimeSeries, statsPerProject] = await Promise.all([
     getDashboardStats(user.id, filters),
     getDetailedTimeSeriesStats(user.id, filters, defaultCurrency),
-    getCategoryStats(user.id, filters, defaultCurrency),
     Promise.all(
       projects.map((project) => getProjectStats(user.id, project.code, filters).then((stats) => [project.code, stats]))
     ).then(Object.fromEntries),
   ])
+
+  const categoryStats = deriveCategoryStats(statsTimeSeries)
 
   return (
     <div className="flex flex-col gap-5">
