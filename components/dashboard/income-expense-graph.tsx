@@ -102,90 +102,136 @@ export function IncomeExpenseGraph({ data, defaultCurrency }: IncomeExpenseGraph
     )
   }
 
+  // Calculate averages across periods that have data
+  const periodsWithIncome = data.filter((d) => d.income > 0)
+  const periodsWithExpense = data.filter((d) => d.expenses > 0)
+  const avgIncome = periodsWithIncome.length > 0
+    ? periodsWithIncome.reduce((sum, d) => sum + d.income, 0) / periodsWithIncome.length
+    : 0
+  const avgExpense = periodsWithExpense.length > 0
+    ? periodsWithExpense.reduce((sum, d) => sum + d.expenses, 0) / periodsWithExpense.length
+    : 0
+
+  const avgIncomePercent = maxValue > 0 ? (avgIncome / maxValue) * 100 : 0
+  const avgExpensePercent = maxValue > 0 ? (avgExpense / maxValue) * 100 : 0
+
   return (
-    <div className="w-full h-[400px]">
-      {/* Chart container with horizontal scroll */}
-      <div ref={scrollContainerRef} className="relative h-full overflow-x-auto">
-        <div className="h-full flex flex-col" style={{ minWidth: `${Math.max(600, data.length * 94)}px` }}>
-          {/* Income section (top half) */}
-          <div className="h-1/2 flex justify-center gap-1 px-2">
-            {data.map((item, index) => {
-              const incomeHeight = maxValue > 0 ? (item.income / maxValue) * 100 : 0
-
-              return (
-                <div
-                  key={`income-${item.period}`}
-                  className="flex-1 min-w-[90px] h-full flex flex-col justify-end items-center cursor-pointer"
-                  onMouseEnter={(e) => handleBarHover(item, e)}
-                  onMouseLeave={handleBarLeave}
-                  onClick={() => item.income > 0 && handleBarClick(item, "income")}
-                >
-                  {/* Period label above income bars */}
-                  <div className="text-sm font-bold text-gray-700 break-words mb-2 text-center">
-                    {formatPeriodLabel(item.period, item.date)}
-                  </div>
-
-                  {item.income > 0 && (
-                    <>
-                      {/* Income amount label */}
-                      <div className="text-xs font-semibold text-green-600 mb-1 break-all text-center">
-                        {formatCurrency(item.income, defaultCurrency)}
-                      </div>
-                      {/* Income bar growing upward from bottom */}
-                      <div
-                        className="w-full bg-gradient-to-t from-green-500 via-green-400 to-emerald-300 border border-green-500/50 rounded-t-lg shadow-sm hover:shadow-md transition-shadow duration-200 min-w-full"
-                        style={{ height: `${incomeHeight}%` }}
-                      />
-                    </>
-                  )}
-                </div>
-              )
-            })}
+    <div className="w-full">
+      {/* Average labels */}
+      <div className="flex gap-4 justify-end mb-2 px-2 text-xs">
+        {avgIncome > 0 && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 border-t-2 border-dashed border-green-500/70" />
+            <span className="text-green-600 font-medium">Avg Income/period: {formatCurrency(avgIncome, defaultCurrency)}</span>
           </div>
-
-          {/* X-axis line (center) */}
-          <div className="w-full border-t-2 border-gray-600" />
-
-          {/* Expense section (bottom half) */}
-          <div className="h-1/2 flex justify-center gap-1 px-2">
-            {data.map((item, index) => {
-              const expenseHeight = maxValue > 0 ? (item.expenses / maxValue) * 100 : 0
-
-              return (
-                <div
-                  key={`expense-${item.period}`}
-                  className="flex-1 min-w-[90px] h-full flex flex-col justify-start items-center cursor-pointer"
-                  onMouseEnter={(e) => handleBarHover(item, e)}
-                  onMouseLeave={handleBarLeave}
-                  onClick={() => item.expenses > 0 && handleBarClick(item, "expense")}
-                >
-                  {item.expenses > 0 && (
-                    <>
-                      {/* Expense bar growing downward from top */}
-                      <div
-                        className="w-full bg-gradient-to-b from-red-500 via-red-400 to-rose-300 border border-red-500/50 rounded-b-lg shadow-sm hover:shadow-md transition-shadow duration-200 min-w-full"
-                        style={{ height: `${expenseHeight}%` }}
-                      />
-                      {/* Expense amount label */}
-                      <div className="text-xs font-semibold text-red-600 mt-1 break-all text-center">
-                        {formatCurrency(item.expenses, defaultCurrency)}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )
-            })}
+        )}
+        {avgExpense > 0 && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 border-t-2 border-dashed border-red-500/70" />
+            <span className="text-red-600 font-medium">Avg Expense/period: {formatCurrency(avgExpense, defaultCurrency)}</span>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Tooltip */}
-      <IncomeExpenceGraphTooltip
-        data={tooltip.data}
-        defaultCurrency={defaultCurrency}
-        position={tooltip.position}
-        visible={tooltip.visible}
-      />
+      {/* Chart area */}
+      <div className="h-[400px]">
+        {/* Chart container with horizontal scroll */}
+        <div ref={scrollContainerRef} className="relative h-full overflow-x-auto">
+          <div className="h-full flex flex-col" style={{ minWidth: `${Math.max(600, data.length * 94)}px` }}>
+            {/* Income section (top half) */}
+            <div className="relative h-1/2 flex justify-center gap-1 px-2">
+              {/* Average income line */}
+              {avgIncome > 0 && (
+                <div
+                  className="absolute left-0 right-0 border-t-2 border-dashed border-green-500/50 pointer-events-none z-10"
+                  style={{ bottom: `${avgIncomePercent}%` }}
+                />
+              )}
+              {data.map((item) => {
+                const incomeHeight = maxValue > 0 ? (item.income / maxValue) * 100 : 0
+
+                return (
+                  <div
+                    key={`income-${item.period}`}
+                    className="flex-1 min-w-[90px] h-full flex flex-col justify-end items-center cursor-pointer"
+                    onMouseEnter={(e) => handleBarHover(item, e)}
+                    onMouseLeave={handleBarLeave}
+                    onClick={() => item.income > 0 && handleBarClick(item, "income")}
+                  >
+                    {/* Period label above income bars */}
+                    <div className="text-sm font-bold text-gray-700 break-words mb-2 text-center">
+                      {formatPeriodLabel(item.period, item.date)}
+                    </div>
+
+                    {item.income > 0 && (
+                      <>
+                        {/* Income amount label */}
+                        <div className="text-xs font-semibold text-green-600 mb-1 break-all text-center">
+                          {formatCurrency(item.income, defaultCurrency)}
+                        </div>
+                        {/* Income bar growing upward from bottom */}
+                        <div
+                          className="w-full bg-gradient-to-t from-green-500 via-green-400 to-emerald-300 border border-green-500/50 rounded-t-lg shadow-sm hover:shadow-md transition-shadow duration-200 min-w-full"
+                          style={{ height: `${incomeHeight}%` }}
+                        />
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* X-axis line (center) */}
+            <div className="w-full border-t-2 border-gray-600" />
+
+            {/* Expense section (bottom half) */}
+            <div className="relative h-1/2 flex justify-center gap-1 px-2">
+              {/* Average expense line */}
+              {avgExpense > 0 && (
+                <div
+                  className="absolute left-0 right-0 border-t-2 border-dashed border-red-500/50 pointer-events-none z-10"
+                  style={{ top: `${avgExpensePercent}%` }}
+                />
+              )}
+              {data.map((item) => {
+                const expenseHeight = maxValue > 0 ? (item.expenses / maxValue) * 100 : 0
+
+                return (
+                  <div
+                    key={`expense-${item.period}`}
+                    className="flex-1 min-w-[90px] h-full flex flex-col justify-start items-center cursor-pointer"
+                    onMouseEnter={(e) => handleBarHover(item, e)}
+                    onMouseLeave={handleBarLeave}
+                    onClick={() => item.expenses > 0 && handleBarClick(item, "expense")}
+                  >
+                    {item.expenses > 0 && (
+                      <>
+                        {/* Expense bar growing downward from top */}
+                        <div
+                          className="w-full bg-gradient-to-b from-red-500 via-red-400 to-rose-300 border border-red-500/50 rounded-b-lg shadow-sm hover:shadow-md transition-shadow duration-200 min-w-full"
+                          style={{ height: `${expenseHeight}%` }}
+                        />
+                        {/* Expense amount label */}
+                        <div className="text-xs font-semibold text-red-600 mt-1 break-all text-center">
+                          {formatCurrency(item.expenses, defaultCurrency)}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Tooltip */}
+        <IncomeExpenceGraphTooltip
+          data={tooltip.data}
+          defaultCurrency={defaultCurrency}
+          position={tooltip.position}
+          visible={tooltip.visible}
+        />
+      </div>
     </div>
   )
 }

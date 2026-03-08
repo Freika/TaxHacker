@@ -1,3 +1,4 @@
+import { CategoryPieCharts } from "@/components/dashboard/category-pie-charts"
 import { FiltersWidget } from "@/components/dashboard/filters-widget"
 import { IncomeExpenseGraph } from "@/components/dashboard/income-expense-graph"
 import { ProjectsWidget } from "@/components/dashboard/projects-widget"
@@ -6,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { formatCurrency } from "@/lib/utils"
 import { getProjects } from "@/models/projects"
 import { getSettings } from "@/models/settings"
-import { getDashboardStats, getDetailedTimeSeriesStats, getProjectStats } from "@/models/stats"
+import { deriveCategoryStats, getDashboardStats, getDetailedTimeSeriesStats, getProjectStats } from "@/models/stats"
 import { TransactionFilters } from "@/models/transactions"
 import { ArrowDown, ArrowUp, BicepsFlexed } from "lucide-react"
 import Link from "next/link"
@@ -17,13 +18,15 @@ export async function StatsWidget({ filters }: { filters: TransactionFilters }) 
   const settings = await getSettings(user.id)
   const defaultCurrency = settings.default_currency || "EUR"
 
-  const stats = await getDashboardStats(user.id, filters)
-  const statsTimeSeries = await getDetailedTimeSeriesStats(user.id, filters, defaultCurrency)
-  const statsPerProject = Object.fromEntries(
-    await Promise.all(
+  const [stats, statsTimeSeries, statsPerProject] = await Promise.all([
+    getDashboardStats(user.id, filters),
+    getDetailedTimeSeriesStats(user.id, filters, defaultCurrency),
+    Promise.all(
       projects.map((project) => getProjectStats(user.id, project.code, filters).then((stats) => [project.code, stats]))
-    )
-  )
+    ).then(Object.fromEntries),
+  ])
+
+  const categoryStats = deriveCategoryStats(statsTimeSeries)
 
   return (
     <div className="flex flex-col gap-5">
@@ -34,6 +37,8 @@ export async function StatsWidget({ filters }: { filters: TransactionFilters }) 
       </div>
 
       {statsTimeSeries.length > 0 && <IncomeExpenseGraph data={statsTimeSeries} defaultCurrency={defaultCurrency} />}
+
+      <CategoryPieCharts categoryStats={categoryStats} defaultCurrency={defaultCurrency} />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Link href="/transactions?type=income">
