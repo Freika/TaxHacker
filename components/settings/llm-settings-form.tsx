@@ -6,62 +6,52 @@ import { FormError } from "@/components/forms/error"
 import { FormTextarea } from "@/components/forms/simple"
 import { Button } from "@/components/ui/button"
 import { Card, CardTitle } from "@/components/ui/card"
+import { PROVIDERS } from "@/lib/llm-providers"
 import { Field } from "@/prisma/client"
+import type { DragEndEvent } from "@dnd-kit/core"
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { CircleCheckBig, Edit, GripVertical } from "lucide-react"
 import Link from "next/link"
-import { useState, useActionState } from "react"
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors
-} from "@dnd-kit/core"
-import type { DragEndEvent } from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy
-} from "@dnd-kit/sortable"
-import { PROVIDERS } from "@/lib/llm-providers";
-
+import { useActionState, useState } from "react"
 
 function getInitialProviderOrder(settings: Record<string, string>) {
   let order: string[] = []
   if (!settings.llm_providers) {
-    order = ['openai', 'google', 'mistral']
+    order = ["openai", "google", "mistral", "openai_compatible"]
   } else {
-    order = settings.llm_providers.split(",").map(p => p.trim())
+    order = settings.llm_providers.split(",").map((p) => p.trim())
   }
   // Remove duplicates and keep only valid providers
-  return order.filter((key, idx) => PROVIDERS.some(p => p.key === key) && order.indexOf(key) === idx)
+  return order.filter((key, idx) => PROVIDERS.some((p) => p.key === key) && order.indexOf(key) === idx)
 }
 
 export default function LLMSettingsForm({
   settings,
   fields,
+  isSelfHosted,
 }: {
   settings: Record<string, string>
   fields: Field[]
-  showApiKey?: boolean
+  isSelfHosted: boolean
 }) {
   const [saveState, saveAction, pending] = useActionState(saveSettingsAction, null)
   const [providerOrder, setProviderOrder] = useState<string[]>(getInitialProviderOrder(settings))
 
   // Controlled values for each provider
   const [providerValues, setProviderValues] = useState(() => {
-    const values: Record<string, { apiKey: string; model: string }> = {}
+    const values: Record<string, { apiKey: string; model: string; baseUrl: string }> = {}
     PROVIDERS.forEach((provider) => {
       values[provider.key] = {
         apiKey: settings[provider.apiKeyName],
         model: settings[provider.modelName] || provider.defaultModelName,
+        baseUrl: provider.baseUrlName ? settings[provider.baseUrlName] || provider.defaultBaseUrl || "" : "",
       }
     })
     return values
   })
 
-  function handleProviderValueChange(providerKey: string, field: "apiKey" | "model", value: string) {
+  function handleProviderValueChange(providerKey: string, field: "apiKey" | "model" | "baseUrl", value: string) {
     setProviderValues((prev) => ({
       ...prev,
       [providerKey]: {
@@ -74,20 +64,20 @@ export default function LLMSettingsForm({
   return (
     <>
       <form action={saveAction} className="space-y-4">
+        {isSelfHosted && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">LLM providers</label>
+            <DndProviderBlocks
+              providerOrder={providerOrder}
+              setProviderOrder={setProviderOrder}
+              providerValues={providerValues}
+              handleProviderValueChange={handleProviderValueChange}
+            />
+            <small className="text-muted-foreground">Drag provider blocks to reorder. First is highest priority.</small>
+          </div>
+        )}
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">LLM providers</label>
-          <DndProviderBlocks
-            providerOrder={providerOrder}
-            setProviderOrder={setProviderOrder}
-            providerValues={providerValues}
-            handleProviderValueChange={handleProviderValueChange}
-          />
-          <small className="text-muted-foreground">
-            Drag provider blocks to reorder. First is highest priority.
-          </small>
-        </div>
-        <input type="hidden" name="llm_providers" value={providerOrder.join(",")} />
+        {isSelfHosted && <input type="hidden" name="llm_providers" value={providerOrder.join(",")} />}
 
         <FormTextarea
           title="Prompt for File Analysis Form"
@@ -139,13 +129,18 @@ export default function LLMSettingsForm({
 }
 
 type DndProviderBlocksProps = {
-  providerOrder: string[];
-  setProviderOrder: React.Dispatch<React.SetStateAction<string[]>>;
-  providerValues: Record<string, { apiKey: string; model: string }>;
-  handleProviderValueChange: (providerKey: string, field: "apiKey" | "model", value: string) => void;
-};
+  providerOrder: string[]
+  setProviderOrder: React.Dispatch<React.SetStateAction<string[]>>
+  providerValues: Record<string, { apiKey: string; model: string; baseUrl: string }>
+  handleProviderValueChange: (providerKey: string, field: "apiKey" | "model" | "baseUrl", value: string) => void
+}
 
-function DndProviderBlocks({ providerOrder, setProviderOrder, providerValues, handleProviderValueChange }: DndProviderBlocksProps) {
+function DndProviderBlocks({
+  providerOrder,
+  setProviderOrder,
+  providerValues,
+  handleProviderValueChange,
+}: DndProviderBlocksProps) {
   const sensors = useSensors(useSensor(PointerSensor))
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -173,17 +168,17 @@ function DndProviderBlocks({ providerOrder, setProviderOrder, providerValues, ha
 }
 
 type SortableProviderBlockProps = {
-  id: string;
-  idx: number;
-  providerKey: string;
-  value: { apiKey: string; model: string };
-  handleValueChange: (providerKey: string, field: "apiKey" | "model", value: string) => void;
-};
+  id: string
+  idx: number
+  providerKey: string
+  value: { apiKey: string; model: string; baseUrl: string }
+  handleValueChange: (providerKey: string, field: "apiKey" | "model" | "baseUrl", value: string) => void
+}
 
 function SortableProviderBlock({ id, idx, providerKey, value, handleValueChange }: SortableProviderBlockProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
 
-  const provider = PROVIDERS.find(p => p.key === providerKey)
+  const provider = PROVIDERS.find((p) => p.key === providerKey)
   if (!provider) return null
   return (
     <div
@@ -212,27 +207,33 @@ function SortableProviderBlock({ id, idx, providerKey, value, handleValueChange 
           type="text"
           name={provider.apiKeyName}
           value={value.apiKey}
-          onChange={e => handleValueChange(provider.key, "apiKey", e.target.value)}
+          onChange={(e) => handleValueChange(provider.key, "apiKey", e.target.value)}
           className="flex-1 border rounded px-2 py-1"
-          placeholder="API key"
+          placeholder={provider.baseUrlName ? "API key (optional)" : "API key"}
         />
         <input
           type="text"
           name={provider.modelName}
           value={value.model}
-          onChange={e => handleValueChange(provider.key, "model", e.target.value)}
+          onChange={(e) => handleValueChange(provider.key, "model", e.target.value)}
           className="flex-1 border rounded px-2 py-1"
           placeholder="Model name"
         />
       </div>
+      {provider.baseUrlName && (
+        <input
+          type="text"
+          name={provider.baseUrlName}
+          value={value.baseUrl}
+          onChange={(e) => handleValueChange(provider.key, "baseUrl", e.target.value)}
+          className="w-full border rounded px-2 py-1"
+          placeholder="Base URL (e.g. http://localhost:11434/v1)"
+        />
+      )}
       {provider.apiDoc && (
         <small className="text-muted-foreground">
           Get your API key from{" "}
-          <a
-            href={provider.apiDoc}
-            target="_blank"
-            className="underline"
-          >
+          <a href={provider.apiDoc} target="_blank" className="underline">
             {provider.apiDocLabel}
           </a>
         </small>

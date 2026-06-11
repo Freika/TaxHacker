@@ -1,4 +1,19 @@
-export const PROVIDERS = [
+export interface ProviderMeta {
+  key: string
+  label: string
+  apiKeyName: string
+  modelName: string
+  defaultModelName: string
+  baseUrlName?: string
+  defaultBaseUrl?: string
+  apiDoc: string
+  apiDocLabel: string
+  placeholder: string
+  help: { url: string; label: string }
+  logo: string
+}
+
+export const PROVIDERS: ProviderMeta[] = [
   {
     key: "openai",
     label: "OpenAI",
@@ -10,9 +25,9 @@ export const PROVIDERS = [
     placeholder: "sk-...",
     help: {
       url: "https://platform.openai.com/settings/organization/api-keys",
-      label: "OpenAI Platform Console"
+      label: "OpenAI Platform Console",
     },
-    logo: "/logo/openai.svg"
+    logo: "/logo/openai.svg",
   },
   {
     key: "google",
@@ -25,9 +40,9 @@ export const PROVIDERS = [
     placeholder: "...",
     help: {
       url: "https://aistudio.google.com/apikey",
-      label: "Google AI Studio"
+      label: "Google AI Studio",
     },
-    logo: "/logo/google.svg"
+    logo: "/logo/google.svg",
   },
   {
     key: "mistral",
@@ -40,8 +55,25 @@ export const PROVIDERS = [
     placeholder: "...",
     help: {
       url: "https://admin.mistral.ai/organization/api-keys",
-      label: "Mistral Admin Console"
+      label: "Mistral Admin Console",
     },
-    logo: "/logo/mistral.svg"
+    logo: "/logo/mistral.svg",
+  },
+  {
+    key: "openai_compatible",
+    label: "Ollama, LM Studio, vLLM, LocalAI",
+    apiKeyName: "openai_compatible_api_key",
+    modelName: "openai_compatible_model_name",
+    defaultModelName: "",
+    baseUrlName: "openai_compatible_base_url",
+    defaultBaseUrl: "http://localhost:11434/v1",
+    apiDoc: "",
+    apiDocLabel: "",
+    placeholder: "(optional)",
+    help: {
+      url: "https://github.com/ollama/ollama/blob/main/docs/openai.md",
+      label: "Any OpenAI Compatible API endpoints",
+    },
+    logo: "/logo/openai.svg",
   },
 ]
